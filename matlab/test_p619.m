@@ -248,5 +248,23 @@ Ga = 20;
 Ast = p.tropospheric_scintillation(f,tp,phi_e,phi_n,theta,Ga);
 
 
+%% TEST: Test Attachment E implementation 
+% TODO
+Ht = 0.1;
+theta1 = 5.0;  %degrees
+[Dc, Hr] = p.beam_clearance(Ht, theta1);
+figure
+plot(Dc, Hr, 'r');
+hold on
+theta2 = 5.001;  %degrees
+[Dc, Hr] = p.beam_clearance(Ht, theta2);
+plot(Dc, Hr, 'b--');
+xlabel('Distance (km)');
+ylabel('Ray height (km)');
+set(gca,'FontSize',14);
+lstr1 = ['w/  Refraction: \theta = ' num2str(theta1)];
+lstr2 = ['w/o Refraction: \theta = ' num2str(theta2)];
+legend(lstr1,lstr2)
+grid on
 
 

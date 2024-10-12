@@ -307,6 +307,8 @@ classdef P619
             % free-space elevation angle. The apparent elevation angle
             % theta can be estimated from theta_0 using equation (25) in
             % Attachment B
+
+            % theta = fs2apparent(obj, theta_0, Ht);
         end
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -2075,6 +2077,85 @@ classdef P619
 
             return
 
+        end
+
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %                        Attachment E to Annex 1                          %
+        %           Beam clearance taking atmospheric refraction into account     %
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+        function [Dc, Hr] = beam_clearance(obj, Ht, theta)
+            %% beam_clearance Computes the ray height profile 
+            %
+            % Recommendation ITU-R P.619-5 Attachment E
+            %
+            % Inputs
+            % Variable    Unit     Type     Description
+            % Ht          km       float    Altitude of earth-based station (above sea level)
+            % theta       deg      float    Apparent elevation angle at the earth-based station 
+            %
+            % Outputs:
+            % Dc          km       float    Array of horizontal distances of the ray over the curved Earth 
+            % Hr          km       float    Array of ray altitudes at each horizontal distance Dc
+            %
+            %     Rev   Date        Author                          Description
+            %     -------------------------------------------------------------------------------
+            %     v0    20SEP24     Ivica Stevanovic, OFCOM         Initial version
+
+           
+            if (theta <= 5)
+
+                % Initialize
+                Nmax = 2000;
+                Hr_tmp = zeros(Nmax);
+                Dc_tmp = zeros(Nmax);
+
+                Hr_tmp = [Ht];          % Ray altitude at the earth-based station (51)
+                Dc_tmp = [0];           % Horizontal distance at the earth-based station (52)
+                epsilon = theta * pi/180;    % Ray elevation angle above local horizontal (radians) (53)
+
+                % Set the increment in horizontal distance over curved Earth
+
+                delta_d = 1;                  %(54)
+
+                Re = 6371.0;
+
+                count = 2;
+
+                while (1)
+                    % Calculate the increment in ray elevation angle:
+
+                    delta_eps = delta_d * (1.0/Re - 4.28715e-5 * exp(-Hr_tmp(count-1)/7.348));                %(55)
+
+                    % Re-assign the ray height
+                    Hr_tmp(count) = Hr_tmp(count - 1) + delta_d*epsilon;             %(56)
+
+                    % Re-assign the ray elevation angle:
+                    epsilon = epsilon + delta_eps;              %(57)
+
+                    % Re-assign the horizontal distance over curved Earth
+                    Dc_tmp(count) = Dc_tmp(count-1) + delta_d;           %(58)
+
+                    count = count + 1;
+                    if (count > Nmax)
+                        break
+                    end
+                    if (Hr_tmp(count-1) >= 10)
+                        break
+                    end
+
+                end
+
+                Hr = Hr_tmp(1:count-1);
+                Dc = Dc_tmp(1:count-1);
+            else
+                Re = 6371;
+                Dcmax = sqrt(Re.^2 * tand(theta).^2 + 2 * Re * (10 - Ht) ) - Re*tand(theta);
+                Dc = 0 : 1 : ceil(Dcmax);  % 1 km increments
+                Hr = Ht + Dc.*tand(theta) + Dc.^2/(2*Re);
+            end
+
+            return
         end
 
         function Nw = get_interp2_Nwet_Annual_time_location(obj, p, phie, phin)
