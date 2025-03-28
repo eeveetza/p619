@@ -14,8 +14,11 @@ p = P619;
 %% TEST: Verify temperature and pressure profile for standard atmosphere in P.835
 
 h = linspace(0,100,11);
+% Column vectors
+h = h.';
 T = zeros(size(h));
 P = zeros(size(h));
+
 
 [T, P, rho] = p.p835_s1(h);
 
@@ -61,7 +64,8 @@ fprintf(1,"Pressure profile S1: %d out of %d tests passed\n", pass, pass + fail)
 
 %% TEST: Reproduce Figure 2 from Rec. ITU-R P.676-13
 f = linspace(50, 70, 501);
-h = [0, 5, 10, 15, 20];
+h = [0, 5, 10, 15, 20].';
+size(h)
 figure
 
 [T, P, rho] = p.p835_s1(h);
@@ -267,4 +271,22 @@ lstr2 = ['w/o Refraction: \theta = ' num2str(theta2)];
 legend(lstr1,lstr2)
 grid on
 
+%% TEST: Pro-forma Test Attachment F implementation
+% TODO
+Pint = -100;
+f = 20;
+r1 = 100;
+r2 = 200; 
+Ptx = 100;
+G = 10;
+dtx = 10;
+drx = 10;
+[gamma_o, gamma_w] = p.p676d11_ga(f, 1015, 3, 300);
+gamma_g = gamma_o + gamma_w;
+cyl = 1;
+theta = 10;
+theta_path = 10;
+R_rain = 1;
+pol = 0; 
 
+pr_scatt = p.test_precipitation_scatter(Pint, f, r1, r2, Ptx, G, dtx, drx, gamma_g, cyl, theta, theta_path, R_rain, pol);

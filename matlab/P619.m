@@ -964,7 +964,7 @@ classdef P619
 
             ll = (h > 91 & h <= 100); 
             
-            T(ll) = 263.1905 - 76.3232 * sqrt(1-((h(ll)-91)/19.9429).^2);
+            T(ll) = 263.1905 - 76.3232 * sqrt( 1-((h(ll)-91)/19.9429).^2 );
             %(4b)
 
             a0 = 95.571899;
@@ -977,19 +977,33 @@ classdef P619
 
             P(ll) = exp(a0 + a1.*h(ll) + a2.*h(ll).^2 + a3.*h(ll).^3 + a4.*h(ll).^4);   %(5)
 
+            %Column vectors
+            T = T.';
+            P = P.';
 
-
+           
             % Section 1.2: Water-vapour pressure
 
             rho0 = 7.5;                   %(7)
             h0 = 2;
 
+           
             rho = rho0 * exp(-h./h0);        %(6)
+           
+
+%             e = rho .* T ./ 216.7;
+%            
+%                      
+%             eth = 2e-6 * P;
+%             
+%             mm = (e < eth);
+%             
+%             size(rho)
+%             if (~isempty(mm))
+%                 rho(mm) = 2e-6 * 216.7 * P(mm) ./ T(mm);
+%             end
 
 
-            %Column vectors
-            T = T.';
-            P = P.';
             
 
 
@@ -2157,6 +2171,215 @@ classdef P619
 
             return
         end
+
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %                        Attachment F to Annex 1                          %
+        %     Test for whether precipitation-scatter calculation is necessary     %
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+        function pr_scatt = test_precipitation_scatter(obj, Pint, f, r1, r2, Ptx, G, dtx, drx, gamma_g, cyl, theta, theta_path, R_rain, pol)
+            %% beam_clearance Computes the ray height profile 
+            %
+            % Recommendation ITU-R P.619-5 Attachment F
+            %
+            % Inputs
+            % Variable    Unit     Type     Description
+            % Pint        dBW      float    Receiver's interference threshold
+            % f           GHz      float    Frequency
+            % r1,r2       m        float    Radii of the antenna beams (r1 <= r2)
+            % Ptx         dBW      float    Total radiated power of the unwanted transmitter
+            % G           dBi      float    Tx antenna gain in the direction of the common volume
+            % dtx         km       float    Distance from the unwanted transmitter to the common volume represented by cylinders
+            % drx         km       float    Distance of the interfered-with antenna from the common volume represented by cylinders
+            % gamma_g     dB/km    float    Specific attenuation due to atmospheric gasses as given by Rec. ITU-R P.676
+            % cyl         -        int      1/2 - Denotes which cylinder represent the unwanted beam
+            % theta       deg      float    Scatter angle
+            % theta_path  deg      float    Path inclination
+            % R_rain      mm/h     float    Point rainfall rate for a 1 minute integration time exceeded for p% time
+            % pol         -        int      Polarization 0 = horizontal, 1 = vertical, 2 = circular
+            % Outputs:
+            % pr_scatt    -        bool     If true, the full rain-scatter calculation should be conducted 
+            %
+            %     Rev   Date        Author                          Description
+            %     -------------------------------------------------------------------------------
+            %     v0    18OCT24     Ivica Stevanovic, OFCOM         Initial version
+
+            % Step 1: Calculate the cylinder lengths
+            L1 = 2 * r2 / sind(theta);    % (60a)
+            L2 = max(L1*cosd(theta), 2*r1*sind(theta));   %(60b)
+            
+            % Step 2: Calculate the power-flux density S in dBW incident
+            % upon the circular end of the cylinder representing the
+            % unwanted beam
+
+            Peirp = Ptx + G;     %(61a)
+            S = Peirp - 20*log10(dtx) - gamma_g*dtx - 71.0;     %(61)
+
+            % Step 3: Calculate the power entering the illuminated end of
+            % the cylinder representing the unwanted beam, according to
+            % whether this is cylinder 1 or 2
+
+            if cyl == 1
+                Pin = S + 10*log10(pi*r1.^2);        %(62a)
+            else
+                Pin = S + 10*log10(pi*r2.^2);        %(62b)
+            end
+
+            % Step 4: Calculate the power leaving the other end of the
+            % cylinder representing the unwanted beam
+
+            [gamma_r, ~] = specific_rain_attenuation_p838(obj, R_rain, f, theta_path, pol);              %(63c) 
+
+            if cyl == 1
+                Pout = Pin - 0.001 * gamma_r * L1;    %(63a)
+            else
+                Pout = Pin - 0.001 * gamma_r * L2;    %(63b)
+            end
+
+            % Step 5: Calculate the total power scattered from teh cylinder
+            % representing the unwanted beam
+
+            Pscat = 10*log10(10.^(0.1*Pin) - 10.^(0.1*Pout));    %(64)
+
+            % Step 6: Assuming that the rain scatter is isotropic,
+            % calculate the scattered e.i.r.p. wihtin the common volume
+
+            if cyl == 1
+                Peirps = Pscat;                                    %(65a)
+            else
+                Peirps = Pscat - 10*log10(r2.^2*L2/(r1.^2 *L1));   %(65b)
+            end
+
+            % Step 7: Calculate a vfactor to account for non-isotropic
+            % scattering above 10 GHz
+
+            Fnis = 0;
+
+            if (f > 10)
+                Fnis = 1e-3*R_rain.^0.4*cosd(theta)*(2*(f-10).^1.6 - 2.5*(f-10).^1.7);  %(66)
+            end
+            
+            % Step 8: Estimate the unwanted scattered power received by teh
+            % interfered-with antenna
+
+            Ptxs = Peirps + Fnis - 20*log10(drx*f) - gamma_g*drx - 92.4;   %(67)
+
+            pr_scatt = false;
+            
+            if (Pint - Ptxs < 20)
+
+                pr_scatt = true;
+            end
+
+            return
+        end
+
+        function [gammaR, alpha] = specific_rain_attenuation_p838(obj, R, f, theta, pol )
+            %p838 Recommendation ITU-R P.838-3
+            %   This function computes the specific rain attenuation for
+            %   a given rain rate, frequency, path inclination and polarization
+            %   according to ITU-R Recommendation P.838-3
+            %
+            %     Input parameters:
+            %     R        -   Rain rate (mm/h)
+            %     f        -   Frequency (GHz): from 1 to 1000 GHz
+            %     theta    -   Path inclination (radians)
+            %     pol      -   Polarization 0 = horizontal, 1 = vertical, 2 = circular
+            %
+            %     Output parameters:
+            %     gammaR -   specific rain attenuation (dB/km)
+            %     alpha  -   exponent in the specific attenuation (-)
+
+            if (f < 1 || f > 1000)
+                warning('Frequency out of valid band [1, 1000] GHz.');
+            end
+
+            if pol == 0 % horizontal polarization
+
+                tau = 0;
+
+            elseif (pol == 1) % vertical polarization
+
+                tau = pi/2;
+
+            else % circular polarization
+
+                tau = pi/4;
+
+            end
+
+            % Coefficients for kH
+            Table1 = [  -5.33980 -0.10008 1.13098
+                -0.35351 1.26970 0.45400
+                -0.23789 0.86036 0.15354
+                -0.94158 0.64552 0.16817];
+
+            aj_kh = Table1(:,1);
+            bj_kh = Table1(:,2);
+            cj_kh = Table1(:,3);
+            m_kh = -0.18961;
+            c_kh = 0.71147;
+
+            % Coefficients for kV
+
+            Table2 = [  -3.80595 0.56934 0.81061
+                -3.44965 -0.22911 0.51059
+                -0.39902 0.73042 0.11899
+                0.50167 1.07319 0.27195];
+
+            aj_kv = Table2(:,1);
+            bj_kv = Table2(:,2);
+            cj_kv = Table2(:,3);
+            m_kv = -0.16398;
+            c_kv = 0.63297;
+
+            % Coefficients for aH
+
+            Table3 = [  -0.14318 1.82442 -0.55187
+                0.29591 0.77564 0.19822
+                0.32177 0.63773 0.13164
+                -5.37610 -0.96230 1.47828
+                16.1721 -3.29980 3.43990];
+
+            aj_ah = Table3(:,1);
+            bj_ah = Table3(:,2);
+            cj_ah = Table3(:,3);
+            m_ah  = 0.67849;
+            c_ah  = -1.95537;
+
+            % Coefficients for aV
+
+            Table4 = [  -0.07771 2.33840 -0.76284
+                0.56727 0.95545 0.54039
+                -0.20238 1.14520 0.26809
+                -48.2991 0.791669 0.116226
+                48.5833 0.791459 0.116479];
+
+            aj_av = Table4(:,1);
+            bj_av = Table4(:,2);
+            cj_av = Table4(:,3);
+            m_av = -0.053739;
+            c_av = 0.83433;
+
+            logkh = sum(aj_kh.* exp(-((log10(f)-bj_kh)./cj_kh).^2)) + m_kh*log10(f) + c_kh;
+            kh = 10.^(logkh);
+
+            logkv = sum(aj_kv.* exp(-((log10(f)-bj_kv)./cj_kv).^2)) + m_kv*log10(f) + c_kv;
+            kv = 10.^(logkv);
+
+            ah = sum(aj_ah.* exp(-((log10(f)-bj_ah)./cj_ah).^2)) + m_ah*log10(f) + c_ah;
+
+            av = sum(aj_av.* exp(-((log10(f)-bj_av)./cj_av).^2)) + m_av*log10(f) + c_av;
+
+            k = (kh + kv + (kh - kv)*(cos(theta))^2 * cos(2*tau))/2;
+
+            alpha = (kh*ah + kv*av + (kh*ah - kv*av)*(cos(theta))^2 * cos(2*tau))/(2*k);
+
+            gammaR = k * R.^alpha;
+
+        end
+
+
 
         function Nw = get_interp2_Nwet_Annual_time_location(obj, p, phie, phin)
             %% get_interp2_Nwet_Annual_time_location Interpolates the value from NWET_Annual at a given phie,phin,p
