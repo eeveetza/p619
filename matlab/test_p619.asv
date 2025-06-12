@@ -317,9 +317,9 @@ phi_e = 6;
 phi_n = 46;
 theta = 10;
 
-Nwet = p.get_interp2_Nwet_Annual_time_location(tp, phi_e, phi_n);
+           %Nwet = get_interp2_Nwet_Annual_time_location(obj, p, phi_e, phi_n);
 Ga = 20;
-Ast = p.tropospheric_scintillation(f,tp,Nwet,theta,Ga);
+Ast = p.tropospheric_scintillation(f,tp,phi_e,phi_n,theta,Ga);
 
 
 %% TEST: Test Attachment E implementation 
