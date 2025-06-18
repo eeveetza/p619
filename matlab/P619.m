@@ -1,15 +1,17 @@
 %     Class implementing Recommendation ITU-R P.619-5
-%     Recommendation ITU-R P.619 provides methods for predicting signal 
-%     propagation losses for interfering signals between stations in space 
-%     and stations on (or near to) the surface of the Earth in the overall 
-%     frequency range of 100 MHz to 100 GHz, except for a few exceptions 
-%     restricted to lower frequencies which will be specified where they 
-%     are described. This Recommendation provides methods to predict 
-%     the propagation losses not exceeded for 0.001%-50% of the time. 
-%     Guidance is given for single entry as well as multiple entry 
-%     propagation losses in analyses that determine interfering signals, 
-%     where correlations of temporal variability and location variability 
+%     Recommendation ITU-R P.619 provides methods for predicting signal
+%     propagation losses for interfering signals between stations in space
+%     and stations on (or near to) the surface of the Earth in the overall
+%     frequency range of 100 MHz to 100 GHz, except for a few exceptions
+%     restricted to lower frequencies which will be specified where they
+%     are described. This Recommendation provides methods to predict
+%     the propagation losses not exceeded for 0.001%-50% of the time.
+%     Guidance is given for single entry as well as multiple entry
+%     propagation losses in analyses that determine interfering signals,
+%     where correlations of temporal variability and location variability
 %     may be influential.
+%
+%     Ionospheric scintillation from Rec. ITU-R P.531 is not implemented
 %
 %     This implementation is not yet complete and is work under progress
 %
@@ -17,19 +19,21 @@
 %     -------------------------------------------------------------------------------
 %     v0    05JUL24     Ivica Stevanovic, OFCOM         Initial version
 %     v1    14APR25     Ivica Stevanovic, OFCOM         Updated with P.835-7 standard atmospheres
+%     v2    17JUN25     Ivica Stevanovic, OFCOM         Updated with Section 3.1 (Section 2.6 not yet implemented)
 
 classdef P619
 
     methods
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        %                               Section 3.1                               
+        %                               Section 3.1
         %          Basic transmission loss for single-entry interference
-        %           
+        %
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-        function Lb = tl_p619_single(obj, fGHz, dkm, varargin)
-            %% tl_p619_single Computes basic transmission loss according to Rec ITU-R P-619-5
+        function L = tl_p619_single(obj, fGHz, dkm, e2sflag, p1, He, Hs, phi_e, phi_s, Dphi, atm_type, lat_s, lat_e, lon_s, lon_e, ...
+                                    p2, Ga, varargin)
+            %% tl_p619_single Computes basic transmission loss according to Rec ITU-R P.619-5
             % for single-entry interference
             %
             % Recommendation ITU-R P.619-5 §3.1
@@ -39,17 +43,41 @@ classdef P619
             % Variable    Unit     Type     Description
             % fGHz	      GHz	   float    Frequency
             % dkm         km       float    Path length
+            % e2sflag     -        bool     If true:  Earth-to-space direction, 
+            %                               If false: space-to-Earth direction
+            % p1          %        float    percentage of time for which atteunation due to atmospheric gases is not exceeded 
+            % He	      km	   float    Height of Earth station (above mean sea level)
+            % Hs          km       float    Height of space-based station (above mean sea level)
+            % phi_e       deg      float    Elevation angle of the main beam of the earth based station antenna
+            % phi_s       deg      float    Elevation angle of the main beam of the space-based station antenna
+            % Dphi        deg      float    Half-power beamwidth for
+            %                               the space based station antenna if e2sflag = true, or 
+            %                               the Earth based station antenna if e2sflag = false
+            % atm_type    n.u.     int      Type of standard atmosphere from ITU-R P.835
+            %                               1  - ITU-R P.835 mean annual global reference atmosphere
+            %                               2  - ITU-R P.835 low-latitude reference atmosphere
+            %                               31 - ITU-R P.835 summer mid-latitude reference atmosphere
+            %                               32 - ITU-R P.835 winter mid-latitude reference atmosphere
+            %                               41 - ITU-R P.835 summer high-latitude reference atmosphere
+            %                               42 - ITU-R P.835 winter high-latitude reference atmosphere
+            % lat_s       deg      float    Latitude of sub-satellite point (zero for geostationary satellite)
+            % lat_e       deg      float    Latitude of earth-based station
+            % lon_s       deg      float    Longitude of sub-satellite point 
+            % lon_e       deg      float    Longitude of earth-based station
+            % p2          %        float    Time percentage related to the attenuation due to scintillation effects 
+            % Ga          dBi      float    Earth-based antenna gain in the direction of the path
+
             %
             % Name-Value Pair Arguments. Name is the argument name and Value is the
             % corresponding value. Name must appear inside quotes.
             % 'xpdMode'   -        string   'none', 'xpd', 'faraday' or 'hydro'
             %  if 'xpdMode' = 'xpd':
             % 'XPDValue'  dB       float    Cross polarization discrimination
-            %  if 'xpdMode' = 'faraday' 
+            %  if 'xpdMode' = 'faraday'
             % 'Bav'       T        float    Earth's magnetic field, default 50 uT
             % 'NT'        1/m2     float    Total electron density (~1e16 to ~1e19)
             % if 'xpdMode' = 'hydro'
-            % 'Tp'         %        float    Time percentage 
+            % 'Tp'         %        float    Time percentage
             %                               (accepted values are 0.001, 0.01, 0.1, and 1)
             % 'Ap'        dB       float    Rain attenuation exceeded for
             %                               the required percentage of time Tp (co-polar attenuation)
@@ -58,11 +86,27 @@ classdef P619
             %                               horizontal pol: tau = 0
             %                               vertical pol:   tau = 90
             %                               circular pol:   tau = 45
-            %                               
+            %
             % 'theta'     deg      float    path elevation angle
             % Outputs:
             %
             % Lb          dB       float    Basic transmission loss
+
+
+            %if (p_ag < 0.001 || p_ag > 99.999)
+            %    error('Time percentage related to atmospheric gases must be within the range [0.001, 99.999] %.');
+            %end
+        if (~ismember(atm_type, [1, 2, 31, 32, 41, 42] ))
+            errmsg =  sprintf(['The atm_type can take the following values:\n' ...
+                '1  for ITU-R P.835 mean annual global reference atmosphere \n' ...
+                '2  for ITU-R P.835 low-latitude reference atmosphere\n' ...
+                '31 for ITU-R P.835 summer mid-latitude reference atmosphere\n' ...
+                '32 for ITU-R P.835 winter mid-latitude reference atmosphere\n' ...
+                '41 for ITU-R P.835 summer high-latitude reference atmosphere\n' ...
+                '42 for ITU-R P.835 winter high-latitude reference atmosphere)']);
+            error(errmsg);
+        end
+   
 
             % Parse the optional input
             iP = inputParser;
@@ -70,7 +114,7 @@ classdef P619
 
             % Required option: xpdMode
             validXPDModes = {'none', 'xpd', 'faraday', 'hydro'};
-            addParameter(iP, 'xpdMode', 'xpd', @(x) any(validatestring(x, validXPDModes)));
+            addParameter(iP, 'xpdMode', 'none', @(x) any(validatestring(x, validXPDModes)));
 
             % Parameters for different modes
             addParameter(iP, 'XPDValue', [], @(x) isempty(x) || (isnumeric(x) && isscalar(x)));
@@ -80,31 +124,29 @@ classdef P619
             addParameter(iP, 'Ap', [], @(x) isempty(x) || isnumeric(x));
             addParameter(iP, 'tau', [], @(x) assert( isempty(x) || (isnumeric(x) && (x == 0 || x == 45 || x == 90)), "tau can take take the values 0, 45 or 90." ) );
             addParameter(iP, 'theta', [], @(x) isempty(x) || isnumeric(x));
+            
 
             % Parse optional inputs
             parse(iP, varargin{:});
             opts = iP.Results;
 
-
-
-
-            % Free-space basic transmission loss
+            %% Free-space basic transmission loss
 
             Lbfs = tl_free_space(obj, fGHz, dkm);
 
-            % Attenuation due to depolarization
+            %% Attenuation due to depolarization
 
             switch lower(opts.xpdMode)
                 case 'none'
                     Ax = 0;
-                    
+
                 case 'xpd'
                     if isempty(opts.XPDValue)
                         error('XPDValue must be provided for Mode ''xpd''.');
                     end
-                    
+
                     [Ax, ~] = co_and_cross_polar_attenuation(obj, opts.XPDValue);
-                    
+
                 case 'faraday'
                     if isempty(opts.Bav) || isempty(opts.NT)
                         error('Bav and NT must be provided for Mode ''faraday''.');
@@ -112,38 +154,106 @@ classdef P619
                     % TODO: This functions gives back complex values when
                     % cos/sin of thetaF is negative.
                     [Ax, ~] = faraday_co_and_cross_polar_attenuation2(obj, fGHz, opts.Bav, opts.NT);
-                    
+
                 case 'hydro'
                     if any(cellfun(@isempty, {opts.Tp, opts.Ap, opts.tau, opts.theta}))
                         error('All of Tp, Ap, tau, and theta must be provided for Mode ''hydro''.');
                     end
 
-                    Tp = opts.Tp;
-                    Ap = opts.Ap;
-                    tau = opts.tau;
-                    theta = opts.theta;
                     xpd = p618_hydrometeor_xpd(obj, fGHz, opts.Tp, opts.Ap, opts.tau, opts.theta);
                     if (fGHz > 4 && fGHz < 6)
                         xpd = p618_hydrometeor_xpd(obj, 6, opts.Tp, opts.Ap, opts.tau, opts.theta);
                         xpd = p618_xpd_scaling(obj, xpd, 6, ops.tau, fGHz, opts.tau);
                     end
                     Ax = hydrometeor_depolarization_attenuation(obj, xpd);
-        
+
                 otherwise
                     error('Unknown xpdMode.');
             end
-           
-            Lb = Lbfs + Ax;
+
+            %% Attenuation due to atmospheric gases (Annex C)
+            % ISSUE: This procedure does not seem to have time-percentage
+            % dependency that is implied in equation (14)
+
+            % Find lower and upper boundaries for each layer in the path
+            % between earth station and the space station
+
+            Hs = min(100, Hs); % ISSUE P.619 does not explicitly limit the upper height, but P.676 and standard atmospheres do
+
+            h = p676_slant_path_geometry16(obj, He, Hs);
+
+%             % First, compute the bounds for the layers from 0-100 km
+%             h = p676_slant_path_geometry15(obj);
+
+            % compute the midpoint for each layer
+
+            hmid = 0.5*( h(1:end-1) + h(2:end));
+
+            % compute T, P, rho, n profiles at midpoint of each layer
+
+            [T, P, rho, n] = p835_std_atm_profiles(obj, hmid, atm_type);
+
+            if (e2sflag)
+
+                % compute the gaseous attenuation for path 1
+                Ag = atm_attenuation_E2s(obj, fGHz, He, Hs, phi_e, phi_s, Dphi, h, rho, T, P, n, true, atm_type);
+                
+            else
+
+                Ag = atm_attenuation_s2E(obj, fGHz, He, Hs, phi_e, phi_s, Dphi, h, rho, T, P, n, true);
+
+            end
+
+            %% Attenuation due to beamspreading (Section 2.4.2)
+
+            % Difference in longitude between the sub-satellite point and the earth
+            %                               based station, limited to less than half a circle, positive when the space
+            %                               station is to the east of the earth-based station
+
+            del_lon = lon_s - lon_e;
+
+            % TODO: make sure it is less than half a circle and positive
+            % when space station is to the east of the earth station
+
+            % Compute free-space elevation angle
+            [~, theta_0, ~] = straight_line_e2s(obj, Hs, He, lat_s, lat_e, del_lon);
+
+            % ISSUE: Hlower is the altitude of the lower point above sea level (km) (h < 5 km).
+            % It is not clear from the text of Recommendation what this
+            % lower point refers to. I assumed the lower point of the path,
+            % which is always the altitude of the earth station? This is
+            % assumed here
+            Hlower = He;
+            Abs = beam_spreading_loss(obj, theta_0, Hlower);
+
+            %% Tropospheric scintillation
+            % Computation of Nwet using the maps at the earth station site
+
+            Nwet = get_interp2_Nwet_Annual_time_location(obj, p2, lon_e, lat_e);
+
+            Ast = tropospheric_scintillation(obj, fGHz, p2, Nwet, theta_0, Ga);
+
+
+            % Total basic transmission loss (Equation 14)
+
+            Lb = Lbfs + Ax + Ag + Abs + Ast; % + Ldtb;
+            L.Lb = Lb;
+            L.Lbfs = Lbfs;
+            L.Ax = Ax;
+            L.Ag = Ag;
+            L.Abs = Abs;
+            L.Ast = Ast;
+            % L.Ldtb = Ldtb;
         end
 
-            
+
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %                               Section 2.1                               %
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
         function Lbfs = tl_free_space(obj, fGHz, dkm)
-            %%tl_free_space Computes basic transmission loss in free space 
+            %%tl_free_space Computes basic transmission loss in free space
             %
             % Recommendation ITU-R P.619-5 §2.1
             %
@@ -312,7 +422,7 @@ classdef P619
             % and non-resonant Debye attenuation), equations (1-2)
 
             g_0 = 0.182 * f * (sum(Si .* Fi) + Ndf);
-            
+
 
             %% vapor computation
 
@@ -370,7 +480,7 @@ classdef P619
 
         function [Ax, Ac] = faraday_co_and_cross_polar_attenuation(obj, f, Bav, NT)
             %%faraday_co_and_cross_polar_attenuation Computes co- and cross-polar
-            % attenutations due to Faraday rotation, 
+            % attenutations due to Faraday rotation,
             % can be neglected for frequencies at and above 10 GHz
             %
             % Recommendation ITU-R P.619-5 §2.2.2
@@ -394,9 +504,9 @@ classdef P619
 
         end
 
-            function [Ax, Ac] = faraday_co_and_cross_polar_attenuation2(obj, f, Bav, NT)
+        function [Ax, Ac] = faraday_co_and_cross_polar_attenuation2(obj, f, Bav, NT)
             %%faraday_co_and_cross_polar_attenuation Computes co- and cross-polar
-            % attenutations due to Faraday rotation, 
+            % attenutations due to Faraday rotation,
             % can be neglected for frequencies at and above 10 GHz
             %
             % Recommendation ITU-R P.531-15 §4.2
@@ -423,7 +533,7 @@ classdef P619
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
         function xpd = p618_hydrometeor_xpd(obj, f, p, Ap, tau, theta)
-            %%p618_hydrometeor_xpd Computes the cross-polarizaion discrimination  
+            %%p618_hydrometeor_xpd Computes the cross-polarizaion discrimination
             % from rain statistics. The procedure is valid for frequencies in the
             % range 6 to 55 GHz and path elevation angles below 60 degrees
             %
@@ -432,7 +542,7 @@ classdef P619
             % Inputs
             % Variable    Unit     Type     Description
             % f	          GHz	   float    Frequency
-            % p           %        float    Time percentage 
+            % p           %        float    Time percentage
             %                               (accepted values are 0.001, 0.01, 0.1, and 1)
             % Ap          dB       float    Rain attenuation exceeded for
             %                               the required percentage of time p (co-polar attenuation)
@@ -460,7 +570,7 @@ classdef P619
             else
                 error('The model is valid for frequencies in the range 6 - 55 GHz.');
             end
-            
+
             % Step 2, equation (69)
 
             if (f >= 6 && f < 9)
@@ -484,7 +594,7 @@ classdef P619
             Ctau = -10*log10(1-0.484*(1+cosd(4*tau)));
 
             % Step 4, equation (71)
-            
+
             Ctheta = -40*log10(cosd(theta));
 
             % Step 5, equation (72)
@@ -511,7 +621,7 @@ classdef P619
             xpd_rain = Cf - CA + Ctau + Ctheta + Csigma;
 
             % Step 7, equation (74)
-            
+
             Cice = xpd_rain * (0.3 + 0.1 * log10(p))/2.0;
 
             % Step 8, equation (75)
@@ -530,7 +640,7 @@ classdef P619
             %
             % Inputs
             % Variable    Unit     Type     Description
-            % xpd1        dB	   float    Cross-polarization discrimination 
+            % xpd1        dB	   float    Cross-polarization discrimination
             % f1          GHz      float    Frequency (4-30 GHz)
             % tau1        deg      float    Tilt angle of the linearly
             %                               polarized electric field vector with respect to the
@@ -539,12 +649,12 @@ classdef P619
             % tau2        deg      float    Tilt angle of the linearly
             %                               polarized electric field vector with respect to the
             %                               horizontal 0-90 degs (for circular polarizaion use tau = 45)
-            
+
             % Outputs:
             %
             % xpd2        dB       float    Cross-polarization
             %                               discrimination at frequency f2 and polarization tilt tau2
-            
+
             xpd2 = xpd1 - 20*log10( (f2 * sqrt(1-0.484*(1+cosd(4*tau2))) ) / (f1 * sqrt(1-0.484*(1+cosd(4*tau1))) ) );  % (76)
 
         end
@@ -571,10 +681,10 @@ classdef P619
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %               Section 2.4.2: Loss due to beam spreading                 %
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        
+
         function Abs = beam_spreading_loss(obj, theta, h)
             %% beam_spreading_loss Calculates the beam spreading loss for propagation through the atmosphere
-            % This effect is insignificant for elevation angles above 5 degrees 
+            % This effect is insignificant for elevation angles above 5 degrees
             % and it is independent of frequency over the range 1-100 GHz
             % Recommendation ITU-R P.619-5 §2.4.2
             %
@@ -588,19 +698,19 @@ classdef P619
             % Abs         dB       float    Signal loss due to beam spreading
 
             den =         1.728  + 0.5411 .*theta  + 0.03723.*theta.^2  + ...
-                  h    * (0.1815 + 0.06272.*theta  + 0.0138 .*theta.^2) + ...
-                  h.^2 .* (0.01727 + 0.008288.*theta);
+                h    * (0.1815 + 0.06272.*theta  + 0.0138 .*theta.^2) + ...
+                h.^2 .* (0.01727 + 0.008288.*theta);
 
-           nom = 0.5411 + 0.07446.*theta + h .* (0.06272 + 0.0276.*theta) + h.^2 * 0.008288;
+            nom = 0.5411 + 0.07446.*theta + h .* (0.06272 + 0.0276.*theta) + h.^2 * 0.008288;
 
-           B = 1 - nom./den.^2;
+            B = 1 - nom./den.^2;
 
-           % ? Equation (10) has a \pm sign in front. The results in Figure
-           % 8 are always positive. It would be reasonable to assume that Abs should always
-           % be positive and instead of \pm one should use absolute value?
-           % This assumption is adopted here
-           
-           Abs = abs( 10*log10(B) ); 
+            % ISSUE: Equation (10) has a \pm sign in front. The results in Figure
+            % 8 are always positive. It would be reasonable to assume that Abs should always
+            % be positive and instead of \pm one should use absolute value?
+            % This assumption is adopted here
+
+            Abs = abs( 10*log10(B) );
 
         end
 
@@ -610,21 +720,21 @@ classdef P619
 
         % not implemented, Recommendation ITU-R P.531 integral software in
         % Fortran that cannot be distributed and has scientific only use in
-        % the license conditions. 
+        % the license conditions.
         % Ionospheric scintillation can be ignored above 10 GHz
 
-        
+
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %                        Attachment A to Annex 1                          %
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
         function [Dts, theta_0, psi] = straight_line_e2s(obj, Hs, Ht, phi_s, phi_t, delta)
-            %%straight_line_e2s Computes geometry of straigth-line Earth-space path 
+            %%straight_line_e2s Computes geometry of straigth-line Earth-space path
             %
             % Recommendation ITU-R P.619-5 Attachment A to Annex 1
             %
-            
+
             % Inputs
             % Variable    Unit     Type     Description
             % Hs	      km	   float    Altitude of space station, asl
@@ -633,7 +743,7 @@ classdef P619
             % phi_t       deg      float    Latitude of earth-based station
             % delta       deg      float    Difference in longitude between the sub-satellite point and the earth
             %                               based station, limited to less than half a circle, positive when the space
-            %                               station is to the east of the earth-based station 
+            %                               station is to the east of the earth-based station
             % Outputs:
             %
             % Dts         km       float    Straight-line distance between earth and space stations
@@ -650,7 +760,7 @@ classdef P619
 
             % Step2: Calculate Cartesian coordinates of the space station where the axes origin is
             % at the center of the Earth, the Z axis is directed northwards
-            % (such that the north pole is on the positive Z axis), and the 
+            % (such that the north pole is on the positive Z axis), and the
             % X axis is in the meridian of the earth-based station:
 
             X1 = Rs*cosd(phi_s)*cosd(delta);                         %(19a)
@@ -685,7 +795,7 @@ classdef P619
             % straight line from the earth-based station to the space
             % station relative to true South
 
-            psi = atand2(X2, Y2);                                     %(24)
+            psi = atan2d(X2, Y2);                                     %(24)
 
             % Step 8: Reassign psi to be eastwards from true North by
             % subtracting it from a half-circle. Depending on the
@@ -711,11 +821,11 @@ classdef P619
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
         function theta = fs2apparent(obj, theta_0, Ht)
-            %%fs2apparent Computes apparent elevation from free space elevation 
+            %%fs2apparent Computes apparent elevation from free space elevation
             %
             % Recommendation ITU-R P.619-5 Attachment B to Annex 1
             %
-            
+
             % Inputs
             % Variable    Unit     Type     Description
             % theta_0     deg      float    Free-space elevation angle
@@ -723,7 +833,7 @@ classdef P619
             %
             % Outputs:
             % theta       deg      float    Apparent or actual elevation
-            
+
             % For an earth-based station at altitude Ht less than 3 km and
             % for theta_0 between -1 and 10 degrees (including) the
             % following estimation holds
@@ -742,11 +852,11 @@ classdef P619
         end
 
         function theta_0 = apparent2fs(obj, theta, Ht)
-            %%apparent2fs Computes free space elevation from the apparent elevation 
+            %%apparent2fs Computes free space elevation from the apparent elevation
             %
             % Recommendation ITU-R P.619-5 Attachment B to Annex 1
             %
-            
+
             % Inputs
             % Variable    Unit     Type     Description
             % theta       deg      float    Apparent or actual elevation
@@ -754,7 +864,7 @@ classdef P619
             %
             % Outputs:
             % theta_0     deg      float    Free-space elevation angle
-            
+
             T1 = 1.314   + 0.6437*theta  + 0.02869*theta.^2;         %(28a)
             T2 = 0.2305  + 0.09428*theta + 0.01096*theta.^2;         %(28b)
             T3 = 0.008583;                                           %(28c)
@@ -793,7 +903,10 @@ classdef P619
             %
             % Ag          dB       float    Attenuation along space-Earth path
 
+            % TODO: Check if this combines well with other
+            % loss mechanisms
             Ag = 1e20;
+
             Reff = 6371;
             re = He + Reff;
             rs = Hs + Reff;
@@ -832,8 +945,12 @@ classdef P619
 
                 if abs(phi_ce - phi_e) > Dphi_e/2.0
 
+                    
+
+                    % TODO: Check if this combines well with other
+                    % loss mechanisms
                     Ag = 1e20;
-                   
+
                     return
 
                 end
@@ -921,8 +1038,10 @@ classdef P619
             %
             % Ag          dB       float    Attenuation along Earth-space path
 
+            % TODO: Check if this combines well with other
+            % loss mechanisms
             Ag = 1e20;
-            
+
             Reff = 6371;
             re = He + Reff;
             rs = Hs + Reff;
@@ -965,6 +1084,9 @@ classdef P619
 
                     if abs(phi_cs - phi_s) > Dphi_s/2.0
 
+
+                            % TODO: Check if this combines well with other
+                            % loss mechanisms
                         Ag = 1e20;
 
                         return
@@ -983,6 +1105,8 @@ classdef P619
 
                         if (~isempty( kk ))
 
+                            % TODO: Check if this combines well with other
+                            % loss mechanisms
                             Ag = 1e20;
 
                             return
@@ -1020,7 +1144,7 @@ classdef P619
 
                 end
 
-                
+
             else % Case 2: phi_e < 0
 
                 % In this case, the attenuatin in equation (29) can be
@@ -1056,15 +1180,15 @@ classdef P619
                 % to the space-based receiver to account for the second term
                 % of equation (44)
 
-                % TODO: Resolve the following issues:
+                % TODO: Resolve the following ISSUE:
                 % 1 - the beamwidth of the virtual terminal is not defined in the Recommendation
                 %     It is assumed to be 180 degrees to make sure the calculated elevation angle is always
                 %     within the half-power beamwidth of the virtual
-                %     terminal -> not needed when using P.676 defined paths 
+                %     terminal -> not needed when using P.676 defined paths
                 % 2 - Profiles rho, T, P, n need to be recalculated
                 %     for h = Hmin, He and then Hmin, Hs?
-                % 3 - P.676 defines the two paths as follows: 
-                %     Path1 is the gaseous attenuation betwee a virtual earth station at height hG and 
+                % 3 - P.676 defines the two paths as follows:
+                %     Path1 is the gaseous attenuation betwee a virtual earth station at height hG and
                 %     the actual earth station at a height of h1 at an apparent elevation antle of 0 degs
                 %     Path2 is the gaseous attenuation between a virtual earth station at height hG and the maximum
                 %     atmospheric height (typically 100 km) at an apparent elevation angle of 0 deg
@@ -1079,14 +1203,14 @@ classdef P619
                 % find lower and upper boundaries for each layer in path 1
 
                 h = p676_slant_path_geometry16(obj, Hmin, He);
-                
+
                 % compute the midpoint for each layer
-                
+
                 hmid = 0.5*( h(1:end-1) + h(2:end));
 
                 % compute T, P, rho, n profiles at midpoint of each layer
 
-                [T, P, rho, n] = std_atm_profiles(obj, hmid, atm_type);
+                [T, P, rho, n] = p835_std_atm_profiles(obj, hmid, atm_type);
 
                 % compute the gaseous attenuation for path 1
 
@@ -1101,15 +1225,15 @@ classdef P619
                 hmid = 0.5*( h(1:end-1) + h(2:end));
 
                 % compute T, P, rho, n profiles at midpoint of each layer
-                
-                [T, P, rho, n] = std_atm_profiles(obj, h, atm_type);
+
+                [T, P, rho, n] = p835_std_atm_profiles(obj, h, atm_type);
 
                 % compute the gaseous attenuation for path 2
 
                 Ag2 = atm_attenuation_E2s(obj, f, Hmin, Hs, 0, phi_s, Dphi_s, h, rho, T, P, n, std_atm, atm_type);
 
                 % compute the total gaseous attenuation
-                
+
                 Ag = Ag1 + Ag2;
 
                 return
@@ -1127,8 +1251,8 @@ classdef P619
             %
             % Inputs
             % Variable    Unit     Type     Description
-            % He          km	   float    Geometric height of the earth station 
-            % phi_e       deg      float    Elevation angle of the main beam of the earth based station antenna 
+            % He          km	   float    Geometric height of the earth station
+            % phi_e       deg      float    Elevation angle of the main beam of the earth based station antenna
             % atm_type    n.u.     int      1  - ITU-R P.835 mean annual global reference atmosphere
             %                               2  - ITU-R P.835 low-latitude reference atmosphere
             %                               31 - ITU-R P.835 summer mid-latitude reference atmosphere
@@ -1138,18 +1262,18 @@ classdef P619
             % nit         n.u.     int      number of iterations
             % Outputs:
             % Hmin        km       float    Altitude of the virtual terminal where the radio beam is parallel to the Earth's surface
-            
+
             % TODO: update this function to include precision and number of
             % iterations
             Reff = 6371;
 
             [~, ~, ~, ne] = p835_std_atm_profiles(obj, He, atm_type);
-           
+
             C = (Reff + He) * ne * cosd(phi_e);
 
             Hmin_old = He;
             Hmin_new = He;
-            
+
             for i = 1:nit
 
                 Hmin_old = Hmin_new;
@@ -1158,7 +1282,7 @@ classdef P619
 
                 Hmin_new = C / nmin - Reff;
 
-                        
+
             end
 
             Hmin = Hmin_new;
@@ -1181,13 +1305,21 @@ classdef P619
             % T           K        float    Temperature profile
             % P           hPa      float    Pressure profile
             % rho         g/m^3    float    Water vapour profile
-
-
+            
+            
             if( min(h) < 0 || max(h) > 100 )
 
                 error('Geometric heights must be within the range 0, 100 km.')
 
             end
+
+            if isrow(h)
+                h = h.';
+            end
+
+            T = zeros(size(h));
+            P = zeros(size(h));
+
 
             kk = (0 <= h & h <= 86);
 
@@ -1272,9 +1404,7 @@ classdef P619
             rho = rho0 * exp(-h./h0);        %(6)
 
 
-            %Column vectors
-            T = T.';
-            P = P.';
+
         end
 
         function [T, P, rho] = p835_low_latitude_annual_reference(obj, h)
@@ -1287,7 +1417,7 @@ classdef P619
             %
             % Inputs
             % Variable    Unit     Type     Description
-            % h	          km	   float    Vector of geometric heights 
+            % h	          km	   float    Vector of geometric heights
             %
             % Outputs:
             % T           K        float    Temperature profile
@@ -1297,6 +1427,14 @@ classdef P619
             if (min(h) < 0 || max(h) >100)
                 error ('Geometric heights must be within the range 0-100 km');
             end
+
+            if isrow(h)
+                h = h.';
+            end
+
+            T = zeros(size(h));
+            P = zeros(size(h));
+            rho = zeros(size(h));
 
             kk = (0 <= h & h < 17);
 
@@ -1344,14 +1482,9 @@ classdef P619
             rho(kk) = 0;
 
 
-            %Column vectors
-            T = T.';
-            P = P.';
-            rho = rho.';
-
         end
 
-            function [T, P, rho] = p835_mid_latitude_summer_reference(obj, h)
+        function [T, P, rho] = p835_mid_latitude_summer_reference(obj, h)
             %% p835_mid_latitude_summer_reference Computes T, P, rho height profiles for summer mid-latitude reference atmosphere
             % Mid-latitudes (45 deg N)
             %
@@ -1370,6 +1503,14 @@ classdef P619
             if (min(h) < 0 || max(h) >100)
                 error ('Geometric heights must be within the range 0-100 km');
             end
+
+            if isrow(h)
+                h = h.';
+            end
+
+            T = zeros(size(h));
+            P = zeros(size(h));
+            rho = zeros(size(h));
 
             kk = (0 <= h & h < 13);
 
@@ -1390,7 +1531,7 @@ classdef P619
             kk = (h >= 53 & h < 80);
 
             T(kk) = 275 + 111.57755*(1-exp(0.0237*(h(kk)-53)));
-   
+
             kk = (h >= 80 & h <= 100);
 
             T(kk) = 175;
@@ -1420,15 +1561,11 @@ classdef P619
             rho(kk) = 0;
 
 
-            %Column vectors
-            T = T.';
-            P = P.';
-            rho = rho.';
 
-            end
+        end
 
 
-            function [T, P, rho] = p835_mid_latitude_winter_reference(obj, h)
+        function [T, P, rho] = p835_mid_latitude_winter_reference(obj, h)
             %% p835_mid_latitude_winter_reference Computes T, P, rho height profiles for winter mid-latitude reference atmosphere
             % Mid-latitudes (45 deg N)
             %
@@ -1448,6 +1585,14 @@ classdef P619
                 error ('Geometric heights must be within the range 0-100 km');
             end
 
+            if isrow(h)
+                h = h.';
+            end
+
+            T = zeros(size(h));
+            P = zeros(size(h));
+            rho = zeros(size(h));
+            
             kk = (0 <= h & h < 10);
 
             T(kk) = 272.7241 - 3.6217*h(kk)  - 0.1759 * h(kk).^2;
@@ -1498,11 +1643,6 @@ classdef P619
             rho(kk) = 0;
 
 
-            %Column vectors
-            T = T.';
-            P = P.';
-            rho = rho.';
-
         end
 
 
@@ -1525,6 +1665,14 @@ classdef P619
             if (min(h) < 0 || max(h) >100)
                 error ('Geometric heights must be within the range 0-100 km');
             end
+
+            if isrow(h)
+                h = h.';
+            end
+
+            T = zeros(size(h));
+            P = zeros(size(h));
+            rho = zeros(size(h));
 
             kk = (0 <= h & h < 10);
 
@@ -1576,10 +1724,6 @@ classdef P619
 
             rho(kk) = 0;
 
-            %Column vectors
-            T = T.';
-            P = P.';
-            rho = rho.';
 
 
         end
@@ -1600,10 +1744,14 @@ classdef P619
             % P           hPa      float    Pressure profile
             % rho         g/m^3    float    Water vapour profile
 
-            
+
             if (min(h) < 0 || max(h) >100)
                 error ('Geometric heights must be within the range 0-100 km');
             end
+
+            T = zeros(size(h));
+            P = zeros(size(h));
+            rho = zeros(size(h));
 
             kk = (0 <= h & h < 8.5);
 
@@ -1666,7 +1814,7 @@ classdef P619
             % Recommendation ITU-R P.453-14
             % Inputs
             % Variable    Unit     Type     Description
-            % h           km       float    Vector of geometric heights 
+            % h           km       float    Vector of geometric heights
             % atm_type    n.u.     int      1  - ITU-R P.835 mean annual global reference atmosphere
             %                               2  - ITU-R P.835 low-latitude reference atmosphere
             %                               31 - ITU-R P.835 summer mid-latitude reference atmosphere
@@ -1675,10 +1823,10 @@ classdef P619
             %                               42 - ITU-R P.835 winter high-latitude reference atmosphere
 
             % Outputs:
-            % T           K        float    Temperature profile 
-            % P           hPa      float    Pressure profile 
-            % rho         g/m^3    float    water-vapour density profile 
-            % n           -        float    Athmospheric radio refractivindex profile 
+            % T           K        float    Temperature profile
+            % P           hPa      float    Pressure profile
+            % rho         g/m^3    float    water-vapour density profile
+            % n           -        float    Athmospheric radio refractivindex profile
 
             if (atm_type == 1)
 
@@ -1713,21 +1861,21 @@ classdef P619
 
             n = p453_n(obj, T, P, rho);
 
-            
+
             return
         end
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %  Recommendation ITU-R P.453-14: Formula for refractive index            %
-        %  Annex 1, equations (1) and (6)                                         %  
+        %  Annex 1, equations (1) and (6)                                         %
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
         function n = p453_n(obj, T, P, rho)
-            %%p453_n Computes the atmospheric radio refractive index 
+            %%p453_n Computes the atmospheric radio refractive index
             %
             % Recommendation ITU-R P.453-14 §1
             % Recommendation ITU-R P.835-7  §1.2
-            
+
             % Inputs
             % Variable    Unit     Type     Description
             % T           K        float    Temperature profile
@@ -1740,17 +1888,29 @@ classdef P619
 
             % P.835, Section 1.2: Water-vapour pressure
 
+            if(isrow(rho))
+                rho = rho.';
+            end
+
+            if (isrow(T))
+                T = T.';
+            end
+
+            if(isrow(P))
+                P = P.';
+            end
+
             % Vapour pressure
 
             e = rho .* T / 216.7;          %(8) P.835
-            
+
             % Water-vapour density decreases exponantially with increasing
             % altitude, up to an altitude where the mixing ration e(h)/P(h)
             % = 2e-6. Above this altitude, the mixing ration is assumed to
             % be constant
 
             kk = find(e < 2e-6*P);
-
+         
             e(kk) = 2e-6*P(kk);          % P.835
             %TODO: this condition is mentioned in P.835 but neither in
             %P.619 nor in P.676
@@ -1759,11 +1919,55 @@ classdef P619
 
             n = 1 + N*1e-6;                            %(1) P.453
 
-        end           
+        end
+
+
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %  Recommendation ITU-R P.453-14: Formula for wet term of refractivy      %
+        %  Annex 1, equations (4) and (8-9)                                         %
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+        function Nwet = p453_Nwet(obj, t, P, H)
+            %%p453_Nwet Computes the wet term of the radio refractivity
+            %
+            % Recommendation ITU-R P.453-14 §1
+
+            % Inputs
+            % Variable    Unit     Type     Description
+            % t           deg C    float    Temperature at the site
+            % P           hPa      float    Total atmospheric pressure
+            % H           %        float    Relative humidity (%)
+
+            %
+            % Outputs:
+            % Nwet           -        float    Athmospheric radio refractive index
+
+            % Recommendation ITU-R P.453-14 Annex 1, equations (4) and (8-9) 
+
+          a = 6.1121;
+          b = 18.678;
+          c = 257.14;
+          d = 234.5;
+
+          EF = 1 + 1e-4 * (7.2 + P * ( 0.0320 + 5.9e-6*t.^2 ) );
+
+          % ISSUE: it is not clear for temperatures below 0 degrees whether
+          % EF = EFwater + EFice and for temperatures above 0 degrees EF =
+          % EFwater? Here, EF = EFwater is assumed
+
+          es = EF * a * exp((( b - t / d ) * t) /( t + c ));   %(9)
+
+          e = H * es/100;   %(8)
+
+          T = t + 273.15;
+
+          Nwet = 72 * e/T + 3.75e5 * e/T.^2 ;    %(4)
+
+        end
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %  Recommendation ITU-R P.676-13: Slant path geometry                     %
-        %  Annex 1, §2.2.1, equation 15                                           %  
+        %  Annex 1, §2.2.1, equation 15                                           %
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
         function h = p676_slant_path_geometry15(obj)
@@ -1771,8 +1975,8 @@ classdef P619
             %%layer heights for gaseous attenuation calculation
             %
             % Recommendation ITU-R P.676-14 §2.2.1 (14-15)
-            
-            
+
+
             % Inputs
             % Variable    Unit     Type     Description
             %
@@ -1780,7 +1984,7 @@ classdef P619
             % h           km       float    Vector of slant path heights
 
             n = 923;
-    
+
             i = (1:n).';
 
             h = 0.0001*(exp(0.01*(i-1))-1)./(exp(0.01)-1);
@@ -1789,7 +1993,7 @@ classdef P619
         end
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %  Recommendation ITU-R P.676-13: Slant path geometry                     %
-        %  Annex 1, §2.2.1, equation 16                                           %  
+        %  Annex 1, §2.2.1, equation 16                                           %
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
         function h = p676_slant_path_geometry16(obj, hL, hU)
@@ -1797,8 +2001,8 @@ classdef P619
             %%layer heights for gaseous attenuation calculation
             %
             % Recommendation ITU-R P.676-14 §2.2.1 (16)
-            
-            
+
+
             % Inputs
             % Variable    Unit     Type     Description
             % hL          km       float    Lower height of the slant path
@@ -1807,6 +2011,9 @@ classdef P619
             % Outputs:
             % h           km       float    Vector of slant path heights
             
+            if(hU > 100 || hL <0)
+                error('The heights must be 0 <= hL < hU < 100 km');
+            end
 
             iL = floor(100*log(1e4*hL*(exp(0.01)-1)+1)+1);           %(16a)
             iU =  ceil(100*log(1e4*hU*(exp(0.01)-1)+1)+1);           %(16b)
@@ -1814,9 +2021,9 @@ classdef P619
             n = iU - iL + 1;
 
             h = zeros(n,1);
-    
+
             m = (exp(0.02)-exp(0.01)) / (exp(iU/100.0)-exp(iL/100.0)) * ( hU - hL );
-                                                                     %(16c)
+            %(16c)
 
             for i = iL : iU
 
@@ -1824,32 +2031,30 @@ classdef P619
 
             end
 
-            h = h.'; %column vector
-
         end
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %  Recommendation ITU-R P.676-13: Slant path geometry                     %
-        %  Annex 1, §2.2.1, equation 17                                           %  
+        %  Annex 1, §2.2.1, equation 17                                           %
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
         function a = p676_slant_path_geometry17(obj, h, n, phi)
-            %%p676_slant_path_geometry Computes a vector of path lengths  
+            %%p676_slant_path_geometry Computes a vector of path lengths
             %
             % Recommendation ITU-R P.676-14 §2.2.1 (17)
             %
             %
             % Inputs
             % Variable    Unit     Type     Description
-            % h           km       float    Vector of layer heights. Layer #i bounds are (h(i), h(i+1)), 
+            % h           km       float    Vector of layer heights. Layer #i bounds are (h(i), h(i+1)),
             %                               so that the size of this vector is N+1, where N is the number of layers
-            % n           km       float    Vector of refractive indices at the middle of each layer 
+            % n           km       float    Vector of refractive indices at the middle of each layer
             %                               at the height 0.5*(h(i+1) + h(i)) of size N
-            % phi         deg      float    Local apparent elevation angle at height h(1)    
+            % phi         deg      float    Local apparent elevation angle at height h(1)
             %
             % Outputs:
-            % a           km       float    Vector of path lengths for each layer, of size N 
-            
+            % a           km       float    Vector of path lengths for each layer, of size N
+
             % Local zenith angle at or near the surface of the Earth
             % (complement of the apparent elevation angle)
 
@@ -1863,9 +2068,9 @@ classdef P619
 
             beta  = asind(n(1)*r(1) ./(n.*r)  *sind(beta1));
             % alpha = asind(n(1)*r(1) ./(n.*ri1)*sind(beta1));
-            
+
             a = -r.*cosd(beta) + sqrt(r.^2 .* (cosd(beta)).^2 + 2*r.*delta + delta.^2);
-           
+
         end
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1886,7 +2091,6 @@ classdef P619
             % f           GHz      float    Frequency (4 GHz <=f <= 20 GHz)
             % p           %        float    Time percentage (within the range 0 - 100)
             % Nwet        deg      float    Wet term of the surface refractivity exceeded
-            % phi_n       deg      float    Latitude of the earth-station site
             % theta       deg      float    Free-space elevation angle (theta >= 5)
             % Ga          dBi      float    Earth-based antenna gain in the direction of the path
             %
@@ -1895,13 +2099,13 @@ classdef P619
             %                               Negative values for p < 50 indicate an enhancement in singal level
 
 
-             if (f < 4 || f > 100)
-                 warning('This function is applicable for frequencies within the range 4 GHz to 100 GHz.');
-                 % The function computation continues with this warning
-             end
+            if (f < 4 || f > 100)
+                warning('This function is applicable for frequencies within the range 4 GHz to 100 GHz.');
+                % The function computation continues with this warning
+            end
 
             if (theta < 5)
-                warning('This function is defined for free-space elevation angles larger than or equal to 5 degs.');   
+                warning('This function is defined for free-space elevation angles larger than or equal to 5 degs.');
                 Ast = 0;
                 return;
             end
@@ -1982,24 +2186,24 @@ classdef P619
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
         function [Dc, Hr] = beam_clearance(obj, Ht, theta)
-            %% beam_clearance Computes the ray height profile 
+            %% beam_clearance Computes the ray height profile
             %
             % Recommendation ITU-R P.619-5 Attachment E
             %
             % Inputs
             % Variable    Unit     Type     Description
             % Ht          km       float    Altitude of earth-based station (above sea level)
-            % theta       deg      float    Apparent elevation angle at the earth-based station 
+            % theta       deg      float    Apparent elevation angle at the earth-based station
             %
             % Outputs:
-            % Dc          km       float    Array of horizontal distances of the ray over the curved Earth 
+            % Dc          km       float    Array of horizontal distances of the ray over the curved Earth
             % Hr          km       float    Array of ray altitudes at each horizontal distance Dc
             %
             %     Rev   Date        Author                          Description
             %     -------------------------------------------------------------------------------
             %     v0    20SEP24     Ivica Stevanovic, OFCOM         Initial version
 
-           
+
             if (theta <= 5)
 
                 % Initialize
@@ -2061,7 +2265,7 @@ classdef P619
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
         function pr_scatt = test_precipitation_scatter(obj, Pint, f, r1, r2, Ptx, G, dtx, drx, gamma_g, cyl, theta, theta_path, R_rain, pol)
-            %% beam_clearance Computes the ray height profile 
+            %% beam_clearance Computes the ray height profile
             %
             % Recommendation ITU-R P.619-5 Attachment F
             %
@@ -2081,7 +2285,7 @@ classdef P619
             % R_rain      mm/h     float    Point rainfall rate for a 1 minute integration time exceeded for p% time
             % pol         -        int      Polarization 0 = horizontal, 1 = vertical, 2 = circular
             % Outputs:
-            % pr_scatt    -        bool     If true, the full rain-scatter calculation should be conducted 
+            % pr_scatt    -        bool     If true, the full rain-scatter calculation should be conducted
             %
             %     Rev   Date        Author                          Description
             %     -------------------------------------------------------------------------------
@@ -2090,7 +2294,7 @@ classdef P619
             % Step 1: Calculate the cylinder lengths
             L1 = 2 * r2 / sind(theta);    % (60a)
             L2 = max(L1*cosd(theta), 2*r1*sind(theta));   %(60b)
-            
+
             % Step 2: Calculate the power-flux density S in dBW incident
             % upon the circular end of the cylinder representing the
             % unwanted beam
@@ -2111,7 +2315,7 @@ classdef P619
             % Step 4: Calculate the power leaving the other end of the
             % cylinder representing the unwanted beam
 
-            [gamma_r, ~] = specific_rain_attenuation_p838(obj, R_rain, f, theta_path, pol);              %(63c) 
+            [gamma_r, ~] = specific_rain_attenuation_p838(obj, R_rain, f, theta_path, pol);              %(63c)
 
             if cyl == 1
                 Pout = Pin - 0.001 * gamma_r * L1;    %(63a)
@@ -2141,14 +2345,14 @@ classdef P619
             if (f > 10)
                 Fnis = 1e-3*R_rain.^0.4*cosd(theta)*(2*(f-10).^1.6 - 2.5*(f-10).^1.7);  %(66)
             end
-            
+
             % Step 8: Estimate the unwanted scattered power received by teh
             % interfered-with antenna
 
             Ptxs = Peirps + Fnis - 20*log10(drx*f) - gamma_g*drx - 92.4;   %(67)
 
             pr_scatt = false;
-            
+
             if (Pint - Ptxs < 20)
 
                 pr_scatt = true;
@@ -2287,7 +2491,7 @@ classdef P619
             % below the desired probability from the following set
 
             p_set = [0.1 0.2 0.3 0.5 1 2 3 5 10 20 30 50 60 70 80 90 95 99];
-            
+
             kk1 = find(p >= p_set);
             kk2 = find(p <= p_set);
 
@@ -2304,7 +2508,7 @@ classdef P619
                 % Nwetabove and Nwetbelow at the probabilities pabove and
                 % pbelow using 2D interpolation as described in
                 % Recommendation ITU-R P.1144
-                
+
                 pabove = p_set(kabove);
                 pbelow = p_set(kbelow);
 
@@ -2326,7 +2530,7 @@ classdef P619
         end
 
 
-            function y = get_interp2_Nwet_Annual_location(obj, cs, phie, phin)
+        function y = get_interp2_Nwet_Annual_location(obj, cs, phie, phin)
             %% get_interp2_Nwet_Annual_location Interpolates the value from NWET_Annual_cs at a given phie,phin
             %
             %     Input parameters:
@@ -2434,146 +2638,274 @@ classdef P619
             y  = latitudeFraction * ( y2 - y1 ) + y1;
 
             return
+        end
+
+        function Lces = cl_p2108_3(f, theta, p, h, hm)
+            %cl_loss3 clutter loss according to P.2108-2 §3.3
+            %   L = cl_p2108_3(f, theta, p, h, hm)
+            %
+            %   This function computes the statistical distribution of clutter loss
+            %   as defined in ITU-R P.2108 (Section 3.3) for Earth to Space and Aeronautical
+            %   paths
+            %
+            %     Input parameters:
+            %     f       -   Frequency (GHz): 10 <= f <= 100
+            %     theta   -   elevation angle (degrees):  0 <= th <= 90
+            %     p       -   percentage of locations (%): 0 < p < 100
+            %     h       -   ground station height (m): h >= 1
+            %     hm      -   median clutter height (m): Low-rise: hm <= 8
+            %                                            Mid-rise: 8 < hm <= 20
+            %                                            High-rise: hm > 20
+            %
+            %     Output parameters:
+            %     Lces     -   clutter loss according to P.2108 §3.3
+            %
+            %     Example:
+            %     Lces = cl_p2108_3(f, theta, p, h, hm)
+
+            %     Rev   Date        Author                          Description
+            %     -------------------------------------------------------------------------------
+            %     v0    12JUN25     Ivica Stevanovic, OFCOM         Initial version
+
+            %% Read the input arguments and check them
+
+            % Checking passed parameter to the defined limits
+
+            if f < 0.5 || f > 100
+                warning('cl_p2108_3: Frequency is outside of the valid domain [0.5, 100] GHz');
             end
 
-            function Lces = cl_p2108_3(f, th, p)
-                %cl_loss3 clutter loss according to P.2108 §3.3
-                %   L = cl_p2108_3(f, th, p)
-                %
-                %   This function computes the statistical distribution of clutter loss
-                %   as defined in ITU-R P.2108 (Section 3.3) for Earth to Space and Aeronautical
-                %   paths
-                %
-                %     Input parameters:
-                %     f       -   Frequency (GHz): 10 <= f <= 100
-                %     th      -   elevation angle (degrees):  0 <= th <= 90
-                %     p       -   percentage of locations (%): 0 < p < 100
-                %
-                %     Output parameters:
-                %     Lces     -   clutter loss according to P.2108 §3.3
-                %
-                %     Example:
-                %     Lces = cl_p2108_3(f, th, p)
-
-                %     Rev   Date        Author                          Description
-                %     -------------------------------------------------------------------------------
-                %     v0    01MAY17     Ivica Stevanovic, OFCOM         Initial version
-
-                %% Read the input arguments and check them
-
-                % Checking passed parameter to the defined limits
-
-                if f < 10 || f > 100
-                    warning('cl_p2108_3: Frequency is outside of the valid domain [10, 100] GHz');
-                end
-
-                if th < 0 || th > 90
-                    warning('cl_p2108_3: Elevation angle is outside of the valid domain [0, 90] degrees');
-                end
-
-
-                if p <= 0 || p >= 100
-                    warning('cl_p2108_3: Percentage of locations is outside of the valid domain (0, 100) %%');
-                end
-
-                K1 = 93*f^(0.175);
-                A1 = 0.05;
-
-                L1 = -K1 *log(1-p/100);
-                L2 = cot(A1*(1-th/90)+pi*th/180);
-
-                Lces = (L1*L2).^(0.5*(90-th)/90) - 1 - 0.6*norminv(1-p/100, 0, 1);   %(6);
-
-
-                return
+            if theta < 0 || theta > 90
+                warning('cl_p2108_3: Elevation angle is outside of the valid domain [0, 90] degrees');
             end
 
-            function L = bel_p2109(f, p, cl, th)
-                %bel building entry loss according to ITU-R P.2109-1
-                %   L = bel_p2109(f, p, cl, th)
-                %
-                %   This function computes the building entry loss not exceeded for the
-                %   probability p as defined in ITU-R P.2109
-                %
-                %     Input parameters:
-                %     f       -   Frequency (GHz): 0.08 <= f <= 100
-                %     p       -   probability for which the loss is not exceeded (%): 0 < p < 100
-                %     cl      -   building class (1 - 'traditional', 2 - 'thermally efficient')
-                %     th      -   elevation angle at the building facade (degrees above the horizontal)
-                %
-                %     Output parameters:
-                %     L       -   Building entry loss not exceeded for the probability p
-                %
-                %     Example:
-                %     L = bel_p2109(f, p, cl, th)
 
-                %     Rev   Date        Author                          Description
-                %     -------------------------------------------------------------------------------
-                %     v0    01MAY17     Ivica Stevanovic, OFCOM         Initial version
-
-                %% Read the input arguments and check them
-
-                % Checking passed parameters to the defined limits
-
-                if f < 0.08 || f > 100
-                    warning('Frequency is outside the valid domain [0.08, 100] GHz');
-                end
-
-                if th < -90 || th > 90
-                    warning('Elevation angle is outside the valid domain [-90, 90] degrees');
-                end
-
-
-                if p <= 0 || p >= 100
-                    warning('Percentage of locations is outside the valid domain (0, 100) %%');
-                end
-
-                switch cl
-                    case 1
-                        % traditional building
-                        r = 12.64;
-                        s = 3.72;
-                        t = 0.96;
-                        u = 9.6;
-                        v = 2.0;
-                        w = 9.1;
-                        x = -3.0;
-                        y = 4.5;
-                        z = -2.0;
-
-                    case 2
-                        % thermally efficient building
-                        r = 28.19;
-                        s = -3.00;
-                        t = 8.48;
-                        u = 13.5;
-                        v = 3.8;
-                        w = 27.8;
-                        x = -2.9;
-                        y = 9.4;
-                        z = -2.1;
-
-                    otherwise
-                        error('Wrong building class type.');
-                end
-
-                Le = 0.212 * abs(th);  % (10)
-                Lh = r+s*log10(f)+t*(log10(f)).^2;  %(9)
-
-                sigma2 = y + z*log10(f);  %(8)
-                sigma1 = u + v*log10(f);  %(7)
-
-                mu2 = w + x*log10(f);  %(6)
-                mu1 = Lh + Le;  %(5)
-                C = -3;  % (4)
-
-                B = norminv(p/100, mu2, sigma2);
-                A = norminv(p/100, mu1, sigma1);
-
-                L = 10*log10( 10^(0.1*A) + 10^(0.1*B) + 10^(0.1*C));
-
-                return
+            if p <= 0 || p >= 100
+                warning('cl_p2108_3: Percentage of locations is outside of the valid domain (0, 100) %%');
             end
+
+            % Table 7: plos parameters for equations (7) and (8)
+            if (hm <= 8)
+                % Low-rise
+                ak = 4.9;
+                bk = 6.7;
+                ck = 2.6;
+                aC = 0.19;
+                bC = 0;
+                aV = 1.4;
+                bV = 74;
+
+            elseif (hm > 8 && hm <= 20)
+                % Mid-rise
+                ak = -2.6;
+                bk =  6.6;
+                ck =  2.0;
+                aC =  0.42;
+                bC = -6.7;
+                aV =  0.15;
+                bV =  97;
+
+            else % hm > 20
+                % High-rise
+                ak =  2.4;
+                bk =  7.0;
+                ck =  1.0;
+                aC =  0.19;
+                bC = -2.7;
+                aV =  0.15;
+                bV =  98;
+            end
+
+
+            % Table 8: plos parameters for equations (9) and (10)
+            if (hm <= 8)
+                % Low-rise
+                akp = 6.0;
+                bkp = 0.07;
+                aCp = 0.15;
+                bC1p = 5.4;
+                bC2p = -0.3;
+                bC3p = 3.2;
+                bC4p = 0.07;
+                cCp = -27;
+                aVp = 1.6;
+                bVp = -17;
+
+            elseif (hm > 8 && hm <= 20)
+                % Mid-rise
+                akp = 3.6;
+                bkp = 0.05;
+                aCp = 0.17;
+                bC1p = 13;
+                bC2p = -0.2;
+                bC3p = 3.7;
+                bC4p = 0.05;
+                cCp = -41;
+                aVp = 1;
+                bVp = -21;
+
+            else % hm > 20
+                % High-rise
+                akp = 5.0;
+                bkp = 0.003;
+                aCp = 0.17;
+                bC1p = 32.6;
+                bC2p = 0.012;
+                bC3p = -23.9;
+                bC4p = -0.07;
+                cCp = -41;
+                aVp = 1;
+                bVp = -18;
+            end
+
+            % LoS probability (7-8)
+
+            Vmax = min(aV*h + bV, 100);
+            Ce = aC*h + bC;
+            k = ((h + ak)/bk).^ck;
+            pLoS = max(0, Vmax * ( ( 1 - exp( -k*(theta + Ce)/90 ) ) / (1 - exp(-k*(90 + Ce) / 90 ) ) ) );
+
+            % Conditional probability of Fresnel zone clearance (9-10)
+
+            Vmaxp = min(aVp*h + bVp, 0) * f.^(-0.55) + 100;
+            Cep = (f*1e9).^aCp + bC1p * exp(bC2p * h) + bC3p * exp(bC4p * h) + cCp;
+            kp = akp * exp (bkp * h);
+            pFcLoS_LoS = max(0, Vmaxp * ( ( 1 - exp( -kp*(theta + Cep)/90 ) ) / (1 - exp(-kp*(90 + Cep) / 90 ) ) ) );
+
+            % Probability of a link being Fresnel clear
+
+            pFcLoS = pLoS * pFcLoS_LoS / 100;     %(11)
+
+            if (p > pLoS)
+
+                pp = (p - pLoS) / (100 - pLoS);  %(12a)
+
+                % Table 9
+
+                alpha1 = 8.54;
+                alpha2 = 0.056;
+                beta1 = 17.57;
+                beta2 = 6.32;
+                gamma1 = 0.63;
+                gamma2 = 0.19;
+
+                mu =    alpha1 + beta1 * log( 1 + ( 90 - theta) / 90 ) + f.^gamma1;   % (13a)
+                sigma = alpha2 + beta2 * log( 1 + ( 90 - theta) / 90 ) + f.^gamma2;   % (13b)
+
+                % Qinv(1-pp) = Finv(pp)
+                Finv = sqrt(2) * erfinv(2*pp-1); % Using definition in P.1057
+
+                Lces = max( mu + sigma*Finv, 6);
+
+
+            elseif (p < pFcLoS)
+
+                % Table 10
+
+                theta1 = -3.542;
+                theta2 = -155.1;
+                sigma1 = -1.06;
+                sigma2 = -6.342;
+
+                Lces = theta1 * exp(theta2 * p / pFcLoS) + sigma1 * exp( sigma2 * p / pFcLoS);  %(15)
+
+            else
+
+                Lces = 6 * (p - pFcLoS) / (pLoS - pFcLoS);   % (14)
+
+            end
+
+
+            return
+        end
+
+        function L = bel_p2109(f, p, cl, th)
+            %bel building entry loss according to ITU-R P.2109-1
+            %   L = bel_p2109(f, p, cl, th)
+            %
+            %   This function computes the building entry loss not exceeded for the
+            %   probability p as defined in ITU-R P.2109
+            %
+            %     Input parameters:
+            %     f       -   Frequency (GHz): 0.08 <= f <= 100
+            %     p       -   probability for which the loss is not exceeded (%): 0 < p < 100
+            %     cl      -   building class (1 - 'traditional', 2 - 'thermally efficient')
+            %     th      -   elevation angle at the building facade (degrees above the horizontal)
+            %
+            %     Output parameters:
+            %     L       -   Building entry loss not exceeded for the probability p
+            %
+            %     Example:
+            %     L = bel_p2109(f, p, cl, th)
+
+            %     Rev   Date        Author                          Description
+            %     -------------------------------------------------------------------------------
+            %     v0    01MAY17     Ivica Stevanovic, OFCOM         Initial version
+
+            %% Read the input arguments and check them
+
+            % Checking passed parameters to the defined limits
+
+            if f < 0.08 || f > 100
+                warning('Frequency is outside the valid domain [0.08, 100] GHz');
+            end
+
+            if th < -90 || th > 90
+                warning('Elevation angle is outside the valid domain [-90, 90] degrees');
+            end
+
+
+            if p <= 0 || p >= 100
+                warning('Percentage of locations is outside the valid domain (0, 100) %%');
+            end
+
+            switch cl
+                case 1
+                    % traditional building
+                    r = 12.64;
+                    s = 3.72;
+                    t = 0.96;
+                    u = 9.6;
+                    v = 2.0;
+                    w = 9.1;
+                    x = -3.0;
+                    y = 4.5;
+                    z = -2.0;
+
+                case 2
+                    % thermally efficient building
+                    r = 28.19;
+                    s = -3.00;
+                    t = 8.48;
+                    u = 13.5;
+                    v = 3.8;
+                    w = 27.8;
+                    x = -2.9;
+                    y = 9.4;
+                    z = -2.1;
+
+                otherwise
+                    error('Wrong building class type.');
+            end
+
+            Le = 0.212 * abs(th);  % (10)
+            Lh = r+s*log10(f)+t*(log10(f)).^2;  %(9)
+
+            sigma2 = y + z*log10(f);  %(8)
+            sigma1 = u + v*log10(f);  %(7)
+
+            mu2 = w + x*log10(f);  %(6)
+            mu1 = Lh + Le;  %(5)
+            C = -3;  % (4)
+            % TODO: remove norminv (from statistical toolbox) and replace
+            % it by erfinv (using Rec. ITU-R P.1057)
+            B = norminv(p/100, mu2, sigma2);
+            A = norminv(p/100, mu1, sigma1);
+
+            L = 10*log10( 10^(0.1*A) + 10^(0.1*B) + 10^(0.1*C));
+
+            return
+        end
 
     end
 end

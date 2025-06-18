@@ -11,6 +11,8 @@ clear all
 
 p = P619;
 
+%tl = tl_p619_single(10, 100, 1)
+
 %% TEST: Reproduce the results from Figure 1 in Recommendation ITU-R P.619-5
 
 XPD = linspace(0,30,101);
