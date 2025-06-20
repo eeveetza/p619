@@ -16,10 +16,30 @@ The following table describes the structure of the folder `./matlab/` containing
 | File/Folder               | Description                                                         |
 |----------------------------|---------------------------------------------------------------------|
 |`P619.m`                | MATLAB class with methods implementing Recommendation ITU-R P.619-5        |
+|`initiate_digital_maps.m`| MATLAB script that processes the ITU-R maps and generates the necessary functions. It needs to be run prior to using this software implementation. For details, see [Integrating ITU Digital Products](#integrating-itu-digital-products). |
 |`test_p619.m`          | MATLAB script (under development) that will be used to validate the implementation of this Recommendation  |
 
 
-## Methods implemented in class P530
+## Integrating ITU Digital Products
+
+This software uses ITU digital products that are integral part of Recommendations. These products must not be reproduced or distributed without explicit written permission from the ITU.
+
+### Setup Instructions
+
+1. **Download and extract the required maps** to `./private/maps`:
+
+   - From [ITU-R P.452-18](https://www.itu.int/dms_pubrec/itu-r/rec/p/R-REC-P.452-18-202310-I!!ZIP-E.zip):
+     - `DN50.TXT`
+
+2. **Run the script** `initiate_digital_maps.m` to generate the necessary functions for retrieving and interpolating data from from the maps.
+
+### Notes
+
+- Ensure all files are placed in `./private/maps` before running the script.
+- The script processes the maps, which are critical for the software’s functionality.
+- The resulting `*.m` files are placed in the folder `./private`.
+
+## Methods implemented in class P5P619
 | Function          | Reference  | Description  |
 |-------------------|------------|--------------|
 |``| §   |  |

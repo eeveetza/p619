@@ -32,7 +32,7 @@ classdef P619
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
         function L = tl_p619_single(obj, fGHz, dkm, e2sflag, p1, He, Hs, phi_e, phi_s, Dphi, atm_type, lat_s, lat_e, lon_s, lon_e, ...
-                                    p2, Ga, varargin)
+                                    p2, Ga, d, h, varargin)
             %% tl_p619_single Computes basic transmission loss according to Rec ITU-R P.619-5
             % for single-entry interference
             %
@@ -195,7 +195,6 @@ classdef P619
 
             if (e2sflag)
 
-                % compute the gaseous attenuation for path 1
                 Ag = atm_attenuation_E2s(obj, fGHz, He, Hs, phi_e, phi_s, Dphi, h, rho, T, P, n, true, atm_type);
                 
             else
@@ -232,8 +231,22 @@ classdef P619
             Nwet = get_interp2_Nwet_Annual_time_location(obj, p2, lon_e, lat_e);
 
             Ast = tropospheric_scintillation(obj, fGHz, p2, Nwet, theta_0, Ga);
+            
+            %% Diffraction/Ducting due to obstruction
 
+            % Find radio-refractivity lapse rate dN 
+            % using the digital maps at the Earth station site
 
+            DN = get_interp2('DN50',lon_e,lat_n);
+            
+            k50 = 157/(157-DN);     % (5) ITU-R P.452
+
+            ae = 6371*k50;          % (6a) ITU-R P.452
+
+            [d_hoz, th_hoz] = p452_path_profile(obj, d, h, He*1000, ae);
+
+            % Compute LdB
+            
             % Total basic transmission loss (Equation 14)
 
             Lb = Lbfs + Ax + Ag + Abs + Ast; % + Ldtb;
@@ -718,12 +731,192 @@ classdef P619
         %               Section 2.5.1: Ionospheric scintillation                  %
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-        % not implemented, Recommendation ITU-R P.531 integral software in
+        % ISSUE: not implemented, Recommendation ITU-R P.531 integral software in
         % Fortran that cannot be distributed and has scientific only use in
         % the license conditions.
         % Ionospheric scintillation can be ignored above 10 GHz
 
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %  Section 2.6: Diffraction/ducting loss due to specific obstruction      %
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+        function Ldtb = tl_dtb(obj, fGHz, p, phi, th_hoz, d_hoz, Ld )
+            %%tl_dbt Computes diffraction/ducting loss due to specific
+            %%obstruction
+            %
+            % Recommendation ITU-R P.619-5  Section 2.6
+            %
+
+            % Inputs
+            % Variable    Unit     Type     Description
+            % fGHz        GHz      float    Frequency
+            % p           %        float    Time percentage for which the loss is not exceeded
+            % phi         deg      float    Latitude of the site
+            % th_hoz      mrad     float    Elevation angle of the Earth-based station's horizon above horizontal (P.452-18, (137) )
+            % d_hoz       km       float    Horizon distance of the Earth-based station (P.452-18, (141) )
+            % Ld          dB       float    Diffraction loss due to a local obstruction computed using models from ITU-R P.526.
+            %                               Ld = 0, if no obstacle enters the first Fresnel zone of a radio ray
+            %                               Ld = J(nu) Section 4.1 of Rec P.526 for a single knife-edge obstacle
+            %                               Ld = Jmin(nu) Section 5.1 of Rec P.526 for a finite-width screen
+            %                               Section 4.6 of Rec P.526 for a general slant path terrain obstruction
+            % Outputs:
+            %
+            % Ldbt        dB       float    Diffraction/Ducting loss due to specific obstruction
+            
+
+            thetas = th_hoz - 0.1*d_hoz;  % mrad (13e)
+
+            Ads = 0;
+
+            if (thetas > 0)
+
+                Ads = 20*log10( 1 + 0.361 * thetas * sqrt(fGHz * d_hoz) ) + 0.264*thetas*fGHz.^(1.0/3.0);    % (13d)
+
+            end
+
+            beta = 4.17;
+
+            if (abs(phi) <= 70)
+                beta = 10.^(-0.015 * abs(phi) + 1.67);  % % (13c)
+            end
+
+            dn = 600 / (1+ fGHz)   % km 
+
+            Gamma = 1.076/( (2.0058-log10(beta)).^1.012 ) * exp( -(9.51 -4.8*log10(beta) + 0.195*(log10(beta)).^2)*1e-6*dn^1.13 );  %(13b)
+
+            Ap = 0;
+
+            if (p < beta)
+
+                Ap = (1.2 + 3.7e-3 * dn) * log10(p/beta) + 12* ((p/beta).^Gamma - 1);    % dB   (13a)
+            end
+
+
+            Ldtb = Ld;
+
+            if (p < beta)
+                
+                Ldtb = max (Ld + min(Ap + Ads, 0), 0);   % dB (13)
+                
+            end
+
+            return 
+        end
+
+
+
+        function [d_hoz, th_hoz] = p452_path_profile(obj, d, h, hts, ae)
+            %% p452_path_profile Computes th_hoz and d_hoz according to equations (137) and (141) of Rec ITU-R P.452-18
+            %
+            % Input parameters:
+            % d         -   vector of terrain profile distances from the Earth station [0,dtot] (km)
+            % h         -   vector of terrain profile heigths amsl (m)
+            % hts       -   Earth station height elevation amsl (m)
+            % ae        -   median effective Earth's radius (c.f. Eq (6a)Dear )
+            %
+            % Output parameters:
+            %
+            % d_hoz        -   Earth station antenna horizon distance (km)
+            % th_hoz       -   Eart station antenna horizon elevation angle (mrad)
+            
+            n = length(d);
+        
+            % Earth station antenna horizon elevation angle and distance
+
+            ii = 2:n-1;
+
+            theta = 1000 * atan( (h(ii) - hts)./(1000 * d(ii) ) - d(ii)./(2*ae) );  % Eq (138)
+
+            theta_max = max(theta);                        % Eq (137)
+
+
+            kindex = find(theta == theta_max);
+
+            lt = kindex(1)+1;
+
+            dlt = d(lt);                             % Eq (141)
+
+            d_hoz = dlt;
+            th_hoz = theta_max;
+
+            return
+        end
+
+
+        function y = get_interp2(obj, mapstr, phie, phin)
+            %get_inter2 Interpolates the value from Map at a given phie,phin
+            %
+            %     Input parameters:
+            %     mapstr  -   string pointing to the radiometeorological map
+            %     phie    -   Longitude, positive to east (deg) [-180, 180]
+            %     phin    -   Latitude, positive to north (deg) [-90, 90]
+            %     spacing -   Resolution in latitude/longitude (deg)
+            %
+            %     Output parameters:
+            %     y      -    Interpolated value from the radiometeorological mapt at the point (phie,phin)
+            %
+            %     Rev   Date        Author                          Description
+            %     -------------------------------------------------------------------------------
+            %     v0    09SEP24     Ivica Stevanovic, OFCOM         Initial version
+
+
+            if (phin < -90 || phin > 90)
+                error ('Latitude must be within the range -90 to 90 degrees');
+            end
+
+            if (phie < -180 || phie > 180)
+                error('Longitude must be within the range -180 to 180 degrees');
+            end
+
+            errorstr = sprintf(['DigitalMaps_%s() not found. \n' ...
+                '\nBefore running get_interp2, make sure to: \n' ...
+                '    1. Download and extract the required maps to ./private/maps:\n' ...
+                '        - From ITU-R P.452-18: DN50.TXT\n' ...
+                '    2. Run the script initiate_digital_maps.m to generate the necessary functions.\n'], mapstr);
+
+
+            switch mapstr
+                case 'DN50'
+                    try
+                        map = DigitalMaps_DN50();
+                    catch
+                        error(errorstr);
+                    end
+                    nr = 121;
+                    nc = 241;
+                    spacing = 1.5;
+                    % lat starts with 90
+                    latitudeOffset = 90 - phin;
+                    % lon starts with 0
+                    longitudeOffset = phie;
+                    if phie < 0
+                        longitudeOffset = phie + 360;
+                    end
+
+
+              
+                otherwise
+
+                    error('Error in function call. Uknown map: %s.\n',mapstr);
+            end
+
+            latitudeIndex  = floor(latitudeOffset / spacing)  + 1;
+            longitudeIndex = floor(longitudeOffset / spacing) + 1;
+
+            latitudeFraction  = (latitudeOffset / spacing)  - (latitudeIndex  - 1);
+            longitudeFraction = (longitudeOffset / spacing) - (longitudeIndex - 1);
+
+            val_ul = map(latitudeIndex, longitudeIndex);
+            val_ur = map(latitudeIndex, min(longitudeIndex + 1, nc));
+            val_ll = map(min(latitudeIndex + 1, nr), longitudeIndex);
+            val_lr = map(min(latitudeIndex + 1, nr), min(longitudeIndex + 1, nc));
+
+            y1 = longitudeFraction  * ( val_ur - val_ul ) + val_ul;
+            y2 = longitudeFraction  * ( val_lr - val_ll ) + val_ll;
+            y  = latitudeFraction * ( y2 - y1 ) + y1;
+
+            return
+        end
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %                        Attachment A to Annex 1                          %
@@ -2899,8 +3092,12 @@ classdef P619
             C = -3;  % (4)
             % TODO: remove norminv (from statistical toolbox) and replace
             % it by erfinv (using Rec. ITU-R P.1057)
-            B = norminv(p/100, mu2, sigma2);
-            A = norminv(p/100, mu1, sigma1);
+            %B = norminv(p/100, mu2, sigma2);
+            Finv = sqrt(2) * erfinv(2*p/100-1); % Using definition in P.1057
+            B = mu2 + sigma2 * Finv;
+
+            %A = norminv(p/100, mu1, sigma1);
+            B = mu1 + sigma1 * Finv;
 
             L = 10*log10( 10^(0.1*A) + 10^(0.1*B) + 10^(0.1*C));
 
