@@ -1,0 +1,52 @@
+file,quantity,abs_tol,rel_tol,note
+01_free_space.csv,Lbfs_dB,1e-9,0,closed form
+02_depolarisation.csv,Ax_dB;Ac_dB;Axq_dB,1e-9,0,closed form
+03_faraday.csv,thetaF_rad;AxF_dB;AcF_dB,1e-9,1e-12,closed form
+04_beam_spreading.csv,Abs_dB,1e-9,0,closed form
+05_geometry_attA.csv,Dts_km,1e-6,0,closed form
+05_geometry_attA.csv,theta0_deg;psi_deg,1e-8,0,closed form; psi NaN for a vertical path
+06_attB_fs_to_apparent.csv,theta_deg,1e-9,0,closed form
+07_attB_apparent_to_fs.csv,theta0_deg,1e-9,0,closed form
+08_specific_attenuation.csv,gamma_o_dBkm;gamma_w_dBkm,0,1e-6,line-by-line sum; spectroscopic tables P.676-11..13 agree at this level
+09_atmosphere_magra.csv,T_K;P_hPa;rho_gm3;e_hPa,0,1e-9,closed form
+09_atmosphere_magra.csv,n,1e-12,0,closed form
+10_ag_ascending.csv,Ag_dB,1e-5,1e-5,layered integration; covers layering per P.676 eq. (13)-(15) vs (16)
+11_ag_descending.csv,Ag_dB,1e-5,1e-5,layered integration
+12_hmin.csv,Hmin_km,1e-6,0,root of eq. (45)
+13_ag_negative_elevation.csv,Hmin_km,1e-6,0,root of eq. (45)
+13_ag_negative_elevation.csv,Ag_dB,1e-4,1e-5,two layered paths; sensitive to Hmin
+14_scintillation_attD.csv,sigma_dB;Ast_dB,1e-9,1e-9,closed form
+15_ray_height_attE.csv,Hr_km,1e-9,0,deterministic stepping with 1 km steps
+16_ducting_ldtb.csv,Ldtb_dB,1e-9,0,closed form
+18_precip_scatter_attF.csv,L1_m;L2_m,1e-9,0,closed form; (60b) with 2*r1/sin(theta)
+18_precip_scatter_attF.csv,S_dBWm2;Pin_dBW;Pout_dBW;Pscat_dBW;Peirps_dBW;Fnis_dB;Ptxs_dBW,1e-9,0,closed form
+18_precip_scatter_attF.csv,gamma_r_dBkm,0,1e-9,P.838-3 coefficients
+18_precip_scatter_attF.csv,full_calc,0,0,decision Pint - Ptxs < 20 dB (1 = full calculation needed)
+19_fresnel_knife_edge.csv,nu;R1_m;J_dB,1e-9,1e-12,closed form
+20_finite_width_screen.csv,Jmin_dB;Jav_dB,1e-9,0,closed form
+21_terrain_ldtb.csv,nu_max;Ld_dB;theta_hoz_mrad;Ldtb_dB,1e-8,1e-10,ray trace (1 km steps with linear interpolation) and profile search
+21_terrain_ldtb.csv,d_max_km;d_hoz_km,1e-9,0,profile distance of the maximum
+21_terrain_ldtb.csv,h_max_m,1e-7,0,obstruction height relative to the ray
+22_terrain_slant_p526.csv,nu;J_dB;Le_dB;kb;Ld_dB;theta_hoz_mrad;Ldtb_dB,1e-8,1e-10,ray trace and P.526-16 §4.6 construction
+22_terrain_slant_p526.csv,h_m,1e-7,0,Bullington height perpendicular to the ray
+22_terrain_slant_p526.csv,d1_km;d_hoz_km,1e-9,1e-12,Bullington apex distance along the ray; horizon distance
+23_bel_p2109.csv,Lbe_dB,1e-9,1e-12,closed form (inverse normal)
+24_multiple_entry_eq15.csv,Dts_km,1e-6,0,
+24_multiple_entry_eq15.csv,theta0_deg;theta_deg,1e-8,0,
+24_multiple_entry_eq15.csv,Lbfs_dB;Abs_dB;Lc_dB;Lbe_dB;Ldtb_dB,1e-8,0,
+24_multiple_entry_eq15.csv,Ag_dB;Lb_dB,1e-4,1e-5,layered gaseous attenuation
+25_clutter_p2108_2_draft.csv,Lc_dB,1e-6,0,workbook values rounded to 1e-8 dB
+26_p836_rho.csv,rho_gm3,1e-9,1e-12,interpolation of the P.836-6 annual maps (maps not distributed)
+27_gas_ag_p1.csv,q_pct;rho_s_gm3;rho0_gm3,1e-9,1e-12,P.836 density for 100 - p1 %
+27_gas_ag_p1.csv,theta_deg,1e-8,0,
+27_gas_ag_p1.csv,Ag_dB,1e-4,1e-5,layered gaseous attenuation with scaled water-vapour profile
+28_nwet_p453.csv,Nwet,1e-9,1e-12,bilinear interpolation of the P.453-14 annual maps; linear in log(p) between maps
+29_end_to_end_scint.csv,theta0_deg,1e-8,0,
+29_end_to_end_scint.csv,Nwet;As_dB,1e-9,1e-12,median Nwet (p = 50 %) at the earth-based station; As with theta0
+29_end_to_end_scint.csv,Lb_dB,1e-4,1e-5,includes layered gaseous attenuation
+17_end_to_end_eq14.csv,Dts_km,1e-6,0,
+17_end_to_end_eq14.csv,theta0_deg;theta_deg,1e-8,0,
+17_end_to_end_eq14.csv,Lbfs_dB;Abs_dB;Ldtb_dB,1e-9,0,
+17_end_to_end_eq14.csv,Ag_dB,1e-4,1e-5,
+17_end_to_end_eq14.csv,As_dB,1e-3,0,p2 = 50 %: |As| <~ 1e-4 dB depending on Nwet
+17_end_to_end_eq14.csv,Lb_dB,1e-3,0,

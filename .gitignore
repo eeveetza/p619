@@ -40,4 +40,3 @@
 
 # Ignore all files starting with DigitalMaps_ in the private folder
 /matlab/private/DigitalMaps_*
-!/matlab/private/DigitalMaps_NWET_*
